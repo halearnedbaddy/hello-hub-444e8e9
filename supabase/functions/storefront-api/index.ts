@@ -615,7 +615,19 @@ Deno.serve(async (req) => {
         });
       }
 
-      // No accounts lookup needed — transactions table uses seller_id directly
+      // Get seller's account_id (required NOT NULL field on transactions)
+      const { data: sellerAccount } = await supabase
+        .from("accounts")
+        .select("id")
+        .eq("user_id", store.seller_id)
+        .maybeSingle();
+
+      if (!sellerAccount) {
+        return new Response(JSON.stringify({ success: false, error: "Seller account not configured" }), {
+          status: 400,
+          headers: { ...corsHeaders, "Content-Type": "application/json" },
+        });
+      }
 
       // Get buyer user id if authenticated
       const buyerUserId = await getUserFromRequest(req);
@@ -653,6 +665,7 @@ Deno.serve(async (req) => {
         .from("transactions")
         .insert({
           id: transactionId,
+          account_id: sellerAccount.id,
           seller_id: store.seller_id,
           buyer_id: buyerUserId || null,
           product_id: productId,
