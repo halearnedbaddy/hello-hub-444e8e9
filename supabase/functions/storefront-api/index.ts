@@ -665,6 +665,7 @@ Deno.serve(async (req) => {
         .from("transactions")
         .insert({
           id: transactionId,
+          account_id: sellerAccount.id,
           seller_id: store.seller_id,
           buyer_id: buyerUserId || null,
           product_id: productId,
