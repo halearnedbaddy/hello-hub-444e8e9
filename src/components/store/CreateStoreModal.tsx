@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { X, Store, Link2, Loader2 } from 'lucide-react';
-import { api } from '@/services/api';
+import { createStore as supabaseCreateStore } from '@/services/supabaseApi';
 
 interface CreateStoreModalProps {
   isOpen: boolean;
@@ -48,7 +48,7 @@ export function CreateStoreModal({ isOpen, onClose, onStoreCreated }: CreateStor
     setIsCreating(true);
 
     try {
-      const res = await api.createStore({
+      const res = await supabaseCreateStore({
         name: storeName.trim(),
         slug: storeSlug.trim(),
       });

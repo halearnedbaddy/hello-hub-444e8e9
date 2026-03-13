@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { ShoppingBagIcon, WalletIcon, AlertTriangleIcon, ActivityIcon, LogOutIcon, MenuIcon, XIcon } from '@/components/icons';
 import { BuyerOrders } from '@/components/buyer/BuyerOrders';
@@ -13,10 +13,17 @@ import { useTranslations } from '@/hooks/useTranslations';
 export function BuyerDashboard() {
   const navigate = useNavigate();
   const { t } = useTranslations();
-  const { user, logout } = useSupabaseAuth() ?? {};
+  const { user, logout, isAuthenticated, isLoading: authLoading } = useSupabaseAuth() ?? {};
   const { orders, wallet, disputes, loading, error, isConnected, refetch } = useBuyerData();
   const [activeTab, setActiveTab] = useState<'purchases' | 'wallet' | 'disputes' | 'activity'>('purchases');
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
+
+  // Redirect to login if not authenticated
+  useEffect(() => {
+    if (!authLoading && !isAuthenticated) {
+      navigate('/login');
+    }
+  }, [authLoading, isAuthenticated, navigate]);
 
   const handleLogout = async () => {
     await logout?.();
