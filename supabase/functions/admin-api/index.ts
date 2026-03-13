@@ -61,20 +61,19 @@ Deno.serve(async (req) => {
 
     // GET /dashboard - Dashboard metrics
     if (method === "GET" && (path === "/dashboard" || path === "")) {
-      const [profilesRes, transactionsRes, disputesRes, rolesRes] = await Promise.all([
+      const [profilesRes, transactionsRes, storesRes] = await Promise.all([
         supabaseAdmin.from("profiles").select("id, user_id, created_at", { count: "exact" }),
         supabaseAdmin.from("transactions").select("id, status, amount"),
-        supabaseAdmin.from("disputes").select("id, status"),
-        supabaseAdmin.from("user_roles").select("role"),
+        supabaseAdmin.from("stores").select("id", { count: "exact" }),
       ]);
 
       const profiles = profilesRes.data || [];
       const transactions = transactionsRes.data || [];
-      const disputes = disputesRes.data || [];
-      const roles = rolesRes.data || [];
+      const storeCount = storesRes.count || 0;
 
-      const buyerCount = roles.filter(r => r.role === "buyer").length;
-      const sellerCount = roles.filter(r => r.role === "seller").length;
+      // Count sellers = users who have stores, buyers = everyone else
+      const sellerCount = storeCount;
+      const buyerCount = Math.max(0, profiles.length - sellerCount);
 
       return new Response(JSON.stringify({
         success: true,
@@ -86,15 +85,15 @@ Deno.serve(async (req) => {
           },
           transactions: {
             total: transactions.length,
-            pending: transactions.filter(t => t.status === "PENDING").length,
-            completed: transactions.filter(t => t.status === "COMPLETED" || t.status === "DELIVERED").length,
+            pending: transactions.filter(t => t.status === "PENDING" || t.status === "pending").length,
+            completed: transactions.filter(t => ["COMPLETED", "completed", "DELIVERED", "delivered"].includes(t.status)).length,
           },
           volume: {
             total: transactions.reduce((sum, t) => sum + Number(t.amount || 0), 0),
             currency: "KES",
           },
           disputes: {
-            open: disputes.filter(d => d.status === "OPEN" || d.status === "UNDER_REVIEW").length,
+            open: 0,
           },
         },
       }), {
