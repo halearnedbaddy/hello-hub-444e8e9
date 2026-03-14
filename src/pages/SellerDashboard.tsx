@@ -167,7 +167,7 @@ export function SellerDashboard() {
     async function loadStore() {
       if (activeTab === 'store') {
         setStoreLoading(true);
-        const res = await api.getMyStore();
+        const res = await supabaseApi.getMyStore();
         if (res.success && res.data) {
           setStoreData(res.data as any);
         }
