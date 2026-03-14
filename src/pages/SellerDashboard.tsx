@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { api } from '@/services/api';
+
 import * as supabaseApi from '@/services/supabaseApi';
 import { useSupabaseAuth } from '@/contexts/SupabaseAuthContext';
 import { useCurrency } from '@/hooks/useCurrency';
@@ -72,11 +72,63 @@ export function SellerDashboard() {
     }
   }, [authLoading, isAuthenticated, navigate]);
 
-  // Empty data states - ready for API integration
+  // Real data states loaded from Supabase
   const [orders] = useState<Order[]>([]);
-  const [transactions] = useState<Transaction[]>([]);
+  const [transactions, setTransactions] = useState<Transaction[]>([]);
   const [wallet, setWallet] = useState<WalletData>({ available: 0, pending: 0, total: 0 });
-  const [profile] = useState<SellerProfile>({ name: 'Seller', verified: false, memberSince: '', isActive: false });
+  const [profile, setProfile] = useState<SellerProfile>({ name: 'Seller', verified: false, memberSince: '', isActive: false });
+
+  // Load profile and transactions from Supabase
+  useEffect(() => {
+    async function loadProfileAndTransactions() {
+      // Load profile
+      const statsRes = await supabaseApi.getSellerStats();
+      if (statsRes.success && statsRes.data) {
+        const d = statsRes.data as any;
+        setProfile(prev => ({
+          ...prev,
+          name: d.profile?.businessName || prev.name,
+        }));
+      }
+
+      // Load seller's profile name directly
+      const { supabase: sb } = await import('@/lib/supabase');
+      const { data: { session } } = await sb.auth.getSession();
+      if (session) {
+        const { data: profileData } = await sb.from('profiles').select('name, business_name, created_at').eq('user_id', session.user.id).maybeSingle();
+        if (profileData) {
+          setProfile(prev => ({
+            ...prev,
+            name: (profileData as any).business_name || (profileData as any).name || session.user.email || 'Seller',
+            memberSince: new Date((profileData as any).created_at).toLocaleDateString(),
+          }));
+        }
+
+        // Load transaction history for wallet tab
+        const { data: txData } = await sb.from('transactions')
+          .select('*')
+          .or(`seller_id.eq.${session.user.id}`)
+          .order('created_at', { ascending: false })
+          .limit(50);
+        
+        if (txData) {
+          const mapped: Transaction[] = (txData as any[]).map(tx => ({
+            type: 'deposit' as const,
+            amount: tx.amount,
+            desc: tx.item_name || tx.description || 'Transaction',
+            date: new Date(tx.created_at).toLocaleDateString(),
+            platformFee: tx.platform_fee,
+            sellerPayout: tx.seller_payout,
+            platformFeePercent: tx.fee_percentage,
+            itemName: tx.item_name,
+            createdAt: tx.created_at,
+          }));
+          setTransactions(mapped);
+        }
+      }
+    }
+    if (isAuthenticated) loadProfileAndTransactions();
+  }, [isAuthenticated]);
 
   // Store settings state
   const [storeData, setStoreData] = useState<{
@@ -115,7 +167,7 @@ export function SellerDashboard() {
     async function loadStore() {
       if (activeTab === 'store') {
         setStoreLoading(true);
-        const res = await api.getMyStore();
+        const res = await supabaseApi.getMyStore();
         if (res.success && res.data) {
           setStoreData(res.data as any);
         }
@@ -712,7 +764,7 @@ export function SellerDashboard() {
         onClose={() => {
           setWithdrawalModal(false);
           // Refresh wallet balance when modal closes
-          api.getWallet().then((res: any) => {
+          supabaseApi.getWallet().then((res: any) => {
             if (res.success && res.data) {
               const w = res.data as any;
               setWallet({
