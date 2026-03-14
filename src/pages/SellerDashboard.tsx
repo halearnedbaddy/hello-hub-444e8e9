@@ -764,7 +764,7 @@ export function SellerDashboard() {
         onClose={() => {
           setWithdrawalModal(false);
           // Refresh wallet balance when modal closes
-          api.getWallet().then((res: any) => {
+          supabaseApi.getWallet().then((res: any) => {
             if (res.success && res.data) {
               const w = res.data as any;
               setWallet({
