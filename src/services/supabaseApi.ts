@@ -201,21 +201,24 @@ export async function getBuyerDisputes() {
       console.warn("Disputes query failed (table may not exist):", error.message);
       return { success: true, data: [] };
     }
+    const disputes = (data || []).map((d: any) => ({
+      id: d.id,
+      transactionId: d.transaction_id,
+      status: d.status,
+      reason: d.reason,
+      transaction: d.transactions ? {
+        itemName: d.transactions.item_name,
+        amount: d.transactions.amount,
+        seller: { name: "Seller" },
+      } : null,
+      createdAt: d.created_at,
+    }));
 
-  const disputes = (data || []).map((d: any) => ({
-    id: d.id,
-    transactionId: d.transaction_id,
-    status: d.status,
-    reason: d.reason,
-    transaction: d.transactions ? {
-      itemName: d.transactions.item_name,
-      amount: d.transactions.amount,
-      seller: { name: "Seller" },
-    } : null,
-    createdAt: d.created_at,
-  }));
-
-  return { success: true, data: disputes };
+    return { success: true, data: disputes };
+  } catch (err) {
+    console.warn("Disputes query failed:", err);
+    return { success: true, data: [] };
+  }
 }
 
 export async function confirmDelivery(transactionId: string) {
