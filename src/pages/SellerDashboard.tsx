@@ -73,7 +73,7 @@ export function SellerDashboard() {
   }, [authLoading, isAuthenticated, navigate]);
 
   // Real data states loaded from Supabase
-  const [orders, setOrders] = useState<Order[]>([]);
+  const [orders] = useState<Order[]>([]);
   const [transactions, setTransactions] = useState<Transaction[]>([]);
   const [wallet, setWallet] = useState<WalletData>({ available: 0, pending: 0, total: 0 });
   const [profile, setProfile] = useState<SellerProfile>({ name: 'Seller', verified: false, memberSince: '', isActive: false });
