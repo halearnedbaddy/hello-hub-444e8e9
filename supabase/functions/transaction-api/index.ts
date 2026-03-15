@@ -6,6 +6,19 @@ const corsHeaders = {
   "Access-Control-Allow-Methods": "GET, POST, PATCH, DELETE, OPTIONS",
 };
 
+function getUserId(req: Request): string | null {
+  const authHeader = req.headers.get("Authorization");
+  if (!authHeader?.startsWith("Bearer ")) return null;
+
+  const token = authHeader.slice(7);
+  try {
+    const payload = JSON.parse(atob(token.split(".")[1]));
+    return payload?.sub ?? null;
+  } catch {
+    return null;
+  }
+}
+
 Deno.serve(async (req: Request) => {
   // Handle CORS preflight
   if (req.method === "OPTIONS") {
@@ -24,6 +37,153 @@ Deno.serve(async (req: Request) => {
     const idx = pathParts.indexOf("transaction-api");
     const apiPath = idx >= 0 ? pathParts.slice(idx + 1) : pathParts;
     const method = req.method;
+
+    // POST /transaction-api/:id/accept - Seller accepts order
+    if (method === "POST" && apiPath.length === 2 && apiPath[1] === "accept") {
+      const userId = getUserId(req);
+      if (!userId) {
+        return new Response(
+          JSON.stringify({ success: false, error: "Authentication required", code: "NO_AUTH" }),
+          { status: 401, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+        );
+      }
+
+      const transactionId = apiPath[0];
+
+      const { data: tx, error: txError } = await supabase
+        .from("transactions")
+        .select("id, seller_id, account_id, status")
+        .eq("id", transactionId)
+        .maybeSingle();
+
+      if (txError || !tx) {
+        return new Response(
+          JSON.stringify({ success: false, error: "Transaction not found", code: "NOT_FOUND" }),
+          { status: 404, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+        );
+      }
+
+      const { data: ownedAccount } = await supabase
+        .from("accounts")
+        .select("id")
+        .eq("id", tx.account_id)
+        .eq("user_id", userId)
+        .maybeSingle();
+
+      const isAuthorized = tx.seller_id === userId || !!ownedAccount;
+      if (!isAuthorized) {
+        return new Response(
+          JSON.stringify({ success: false, error: "Forbidden", code: "FORBIDDEN" }),
+          { status: 403, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+        );
+      }
+
+      const status = String(tx.status || "").toUpperCase();
+      if (["CANCELLED", "COMPLETED", "DELIVERED", "SHIPPED"].includes(status)) {
+        return new Response(
+          JSON.stringify({ success: false, error: "Order cannot be accepted in its current status", code: "INVALID_STATUS" }),
+          { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+        );
+      }
+
+      const { data: updated, error: updateError } = await supabase
+        .from("transactions")
+        .update({
+          status: "ACCEPTED",
+          accepted_at: new Date().toISOString(),
+          updated_at: new Date().toISOString(),
+        })
+        .eq("id", transactionId)
+        .select()
+        .single();
+
+      if (updateError) {
+        return new Response(
+          JSON.stringify({ success: false, error: updateError.message, code: "UPDATE_FAILED" }),
+          { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+        );
+      }
+
+      return new Response(
+        JSON.stringify({ success: true, data: updated }),
+        { headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      );
+    }
+
+    // POST /transaction-api/:id/reject - Seller rejects order
+    if (method === "POST" && apiPath.length === 2 && apiPath[1] === "reject") {
+      const userId = getUserId(req);
+      if (!userId) {
+        return new Response(
+          JSON.stringify({ success: false, error: "Authentication required", code: "NO_AUTH" }),
+          { status: 401, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+        );
+      }
+
+      const transactionId = apiPath[0];
+      const body = await req.json().catch(() => ({}));
+      const reason = body?.reason || "Seller rejected order";
+
+      const { data: tx, error: txError } = await supabase
+        .from("transactions")
+        .select("id, seller_id, account_id, status")
+        .eq("id", transactionId)
+        .maybeSingle();
+
+      if (txError || !tx) {
+        return new Response(
+          JSON.stringify({ success: false, error: "Transaction not found", code: "NOT_FOUND" }),
+          { status: 404, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+        );
+      }
+
+      const { data: ownedAccount } = await supabase
+        .from("accounts")
+        .select("id")
+        .eq("id", tx.account_id)
+        .eq("user_id", userId)
+        .maybeSingle();
+
+      const isAuthorized = tx.seller_id === userId || !!ownedAccount;
+      if (!isAuthorized) {
+        return new Response(
+          JSON.stringify({ success: false, error: "Forbidden", code: "FORBIDDEN" }),
+          { status: 403, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+        );
+      }
+
+      const status = String(tx.status || "").toUpperCase();
+      if (["ACCEPTED", "SHIPPED", "DELIVERED", "COMPLETED"].includes(status)) {
+        return new Response(
+          JSON.stringify({ success: false, error: "Order has already advanced and cannot be rejected", code: "INVALID_STATUS" }),
+          { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+        );
+      }
+
+      const { data: updated, error: updateError } = await supabase
+        .from("transactions")
+        .update({
+          status: "CANCELLED",
+          rejection_reason: reason,
+          rejected_at: new Date().toISOString(),
+          updated_at: new Date().toISOString(),
+        })
+        .eq("id", transactionId)
+        .select()
+        .single();
+
+      if (updateError) {
+        return new Response(
+          JSON.stringify({ success: false, error: updateError.message, code: "UPDATE_FAILED" }),
+          { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+        );
+      }
+
+      return new Response(
+        JSON.stringify({ success: true, data: updated }),
+        { headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      );
+    }
 
     // GET /transaction-api/:id - Get transaction details (PUBLIC)
     if (method === "GET" && apiPath.length === 1) {
