@@ -6,25 +6,6 @@ const corsHeaders = {
   "Access-Control-Allow-Methods": "GET, POST, PATCH, DELETE, OPTIONS",
 };
 
-Deno.serve(async (req: Request) => {
-  // Handle CORS preflight
-  if (req.method === "OPTIONS") {
-    return new Response(null, { headers: corsHeaders });
-  }
-
-  try {
-    const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
-    const supabaseServiceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
-    
-    // Use service role for public transaction fetching
-    const supabase = createClient(supabaseUrl, supabaseServiceKey);
-
-    const url = new URL(req.url);
-    const pathParts = url.pathname.split("/").filter(Boolean);
-    const idx = pathParts.indexOf("transaction-api");
-    const apiPath = idx >= 0 ? pathParts.slice(idx + 1) : pathParts;
-    const method = req.method;
-
 function getUserId(req: Request): string | null {
   const authHeader = req.headers.get("Authorization");
   if (!authHeader?.startsWith("Bearer ")) return null;
