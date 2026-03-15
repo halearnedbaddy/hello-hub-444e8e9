@@ -421,44 +421,19 @@ export async function acceptOrder(orderId: string) {
   const { data: { session } } = await supabase.auth.getSession();
   if (!session) return { success: false, error: "Not authenticated" };
 
-  // Update by id — RLS policy will enforce seller ownership (seller_id OR account_id)
-  const { data, error } = await supabase
-    .from("transactions")
-    .update({
-      status: "ACCEPTED",
-      accepted_at: new Date().toISOString(),
-    })
-    .eq("id", orderId)
-    .select()
-    .single();
-
-  if (error) {
-    return { success: false, error: error.message };
-  }
-
-  return { success: true, data };
+  return callEdgeFunction("transaction-api", `/${orderId}/accept`, {
+    method: "POST",
+  });
 }
 
 export async function rejectOrder(orderId: string, reason?: string) {
   const { data: { session } } = await supabase.auth.getSession();
   if (!session) return { success: false, error: "Not authenticated" };
 
-  const { data, error } = await supabase
-    .from("transactions")
-    .update({
-      status: "CANCELLED",
-      rejection_reason: reason,
-      rejected_at: new Date().toISOString(),
-    })
-    .eq("id", orderId)
-    .select()
-    .single();
-
-  if (error) {
-    return { success: false, error: error.message };
-  }
-
-  return { success: true, data };
+  return callEdgeFunction("transaction-api", `/${orderId}/reject`, {
+    method: "POST",
+    body: { reason: reason || "Seller rejected order" },
+  });
 }
 
 export async function addShippingInfo(orderId: string, data: {
